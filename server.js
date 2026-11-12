@@ -1,19 +1,44 @@
 // Trenchline co-op relay server.
 // The host's browser runs the simulation; this server only groups players into
 // rooms and relays messages between the host and the other players.
+// Trenchline game frontend and co-op relay server.
 const http = require('http');
+const path = require('path');
+const express = require('express');
 const { WebSocketServer } = require('ws');
 
 const PORT = Number(process.env.PORT) || 8000;
 const MAX_PLAYERS = 4;
 const CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
-const rooms = new Map(); // code -> { code, host, peers: Map<id, ws>, nextId }
+const rooms = new Map();
 
-const server = http.createServer((req, res) => {
-  res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
-  res.end(JSON.stringify({ ok: true, rooms: rooms.size }));
+const app = express();
+
+// Serve the game page.
+app.get(['/', '/index.html'], (req, res) => {
+  res.sendFile(path.join(__dirname, 'index.html'));
 });
-const wss = new WebSocketServer({ server, maxPayload: 256 * 1024 });
+
+// Serve only the game's public assets.
+app.get('/style.css', (req, res) => {
+  res.sendFile(path.join(__dirname, 'style.css'));
+});
+
+app.use('/js', express.static(path.join(__dirname, 'js')));
+app.use('/assets', express.static(path.join(__dirname, 'assets')));
+app.use('/vendor', express.static(path.join(__dirname, 'vendor')));
+
+// Keep the relay status available at a separate address.
+app.get('/health', (req, res) => {
+  res.json({ ok: true, rooms: rooms.size });
+});
+
+// Both the game page and WebSocket relay use the same server.
+const server = http.createServer(app);
+const wss = new WebSocketServer({
+  server,
+  maxPayload: 256 * 1024
+});
 
 function makeCode() {
   for (let k = 0; k < 200; k++) {
