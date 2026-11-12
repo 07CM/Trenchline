@@ -1,0 +1,617 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 32 32%27%3E%3Crect width=%2732%27 height=%2732%27 rx=%276%27 fill=%27%23231d13%27/%3E%3Cpath d=%27M6 22h20M10 22V12h12v10%27 stroke=%27%23e4c065%27 stroke-width=%273%27 fill=%27none%27/%3E%3C/svg%3E" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+<title>Trenchline — WW2 Top-Down Shooter</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Stencil+Display:wght@600;800;900&family=IBM+Plex+Sans+Condensed:wght@400;500;600;700&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="./style.css" />
+</head>
+<body>
+<canvas id="game" aria-label="Trenchline battlefield"></canvas>
+<div id="hurt" aria-hidden="true"></div>
+<div id="vignette" aria-hidden="true"></div>
+
+<!-- HUD -->
+<div id="hud" hidden>
+  <div class="top">
+    <div class="panel tickets"><span class="lbl">Allied reinforcements</span><span id="tickets" class="num">160</span></div>
+    <div class="panel objective">
+      <div class="pips">
+        <span class="pip" data-state="active"><i>A</i></span><span class="pip"><i>B</i></span><span class="pip"><i>C</i></span><span class="pip"><i>D</i></span><span class="pip"><i>E</i></span>
+      </div>
+      <div class="obj-row"><span id="objlabel" class="obj-label">Capture A</span><span id="timer" class="timer">4:00</span></div>
+      <div class="capbar"><span id="capfill"></span></div>
+      <span id="capstate" class="capstate"></span>
+    </div>
+    <div class="panel tickets axis"><span class="lbl">Axis in sector</span><span id="axiscount" class="num">0</span></div>
+  </div>
+  <div id="feed"></div>
+  <div id="toasts"></div>
+  <div id="popups"></div>
+  <div id="markhint" hidden>Left click or Space to mark the target · Right click or Esc to cancel</div>
+
+  <div class="bottom">
+    <div class="panel vitals" id="infhud">
+      <div class="row"><span id="clsname" class="cls">Rifleman</span><span id="hpnum" class="hpnum">100</span></div>
+      <div class="hpbar"><span id="hpfill"></span></div>
+      <div class="stambar"><span id="stamfill"></span></div>
+      <div class="ability"><kbd>F</kbd><span id="abname">Field Dressing</span><span class="abbar"><span id="abfill"></span></span></div>
+    </div>
+
+    <div class="callins">
+      <div class="bp"><span class="lbl">Battle points</span><span id="bp" class="num">300</span></div>
+      <button class="callin" type="button"><kbd>Z</kbd><span class="cn">Artillery</span><span class="cc">600</span><span class="cd"></span></button>
+      <button class="callin" type="button"><kbd>X</kbd><span class="cn">Air strike</span><span class="cc">900</span><span class="cd"></span></button>
+      <button class="callin" type="button"><kbd>C</kbd><span class="cn">Sherman</span><span class="cc">1500</span><span class="cd"></span></button>
+    </div>
+
+    <div class="right-stack">
+      <canvas id="minimap" width="344" height="112"></canvas>
+      <div class="panel weapon">
+        <div id="tankhud" hidden><span class="lbl">M4 Sherman</span><div class="hpbar tank"><span id="tankhp"></span></div><span class="tanktime">Withdraws in <b id="tanktime">1:00</b></span></div>
+        <div class="weap-row"><span id="weapname" class="wname">M1 Garand</span><span class="ammo"><b id="ammo">8</b><span>/</span><span id="reserve">64</span></span></div>
+        <div class="weap-sub"><span id="altweap"></span><span id="nades"></span></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Touch controls -->
+<div id="touch" hidden>
+  <div id="stick-move" class="stick"><span class="knob"></span></div>
+  <div id="stick-aim" class="stick"><span class="knob"></span></div>
+  <div class="tbtns">
+    <button data-tkey="KeyR">Reload</button><button data-tkey="KeyG">Nade</button><button data-tkey="KeyF">Ability</button><button data-tkey="KeyQ">Swap</button><button data-tkey="ShiftLeft">Sprint</button><button data-tkey="Escape">Pause</button>
+  </div>
+</div>
+
+<!-- Title -->
+<section id="title" class="screen split">
+  <div class="split-text">
+    <p class="eyebrow">Western Front · Autumn 1944</p>
+    <h1 class="logo">Trenchline</h1>
+    <p class="lede">Break five German trench lines before the clock runs out. Each captured objective buys more time. Earn battle points to call in artillery, a P-47 strike, or a Sherman to lead the push.</p>
+    <div class="diff" role="group" aria-label="Difficulty">
+      <span class="lbl">Difficulty</span>
+      <button data-diff="recruit" type="button">Recruit</button><button data-diff="regular" class="sel" type="button">Regular</button><button data-diff="veteran" type="button">Veteran</button>
+    </div>
+    <div class="btn-row title-btns"><button id="play-btn" class="cta" type="button">Play solo</button><button id="coop-btn" class="cta alt" type="button">Play co-op</button></div>
+    <div class="controls">
+      <div><kbd>WASD</kbd> Move</div><div><kbd>Mouse</kbd> Aim</div><div><kbd>LMB / Space</kbd> Fire</div><div><kbd>RMB</kbd> Aim / scope</div>
+      <div><kbd>Shift</kbd> Sprint</div><div><kbd>R</kbd> Reload</div><div><kbd>1 2 Q</kbd> Swap</div><div><kbd>G</kbd> Grenade</div>
+      <div><kbd>F</kbd> Class ability</div><div><kbd>Z X C</kbd> Call-ins</div><div><kbd>Esc</kbd> Pause</div><div><kbd>M</kbd> Mute</div>
+    </div>
+    <p class="threat"><b>Know the enemy:</b> riflemen hold the trenches, <b>rushers</b> charge with SMGs, <b>stalkers</b> freeze when watched and close in when you look away, <b>snipers</b> show a red line before they fire, and MG42 nests cover the bunkers.</p>
+  </div>
+  <div class="split-art"><img src="./assets/title.jpg" alt="Allied infantry charging across no man's land beside a Sherman tank" /></div>
+</section>
+
+<!-- Loadout -->
+<section id="loadout" class="screen" hidden>
+  <div class="screen-inner">
+    <p class="eyebrow">Squad loadout</p>
+    <h2 class="h2">Pick your kit</h2>
+    <div id="loadout-cards" class="cards"></div>
+    <div class="btn-row"><button id="back-btn" class="ghost" type="button">Back</button><button id="deploy-btn" class="cta" type="button">Deploy</button></div>
+  </div>
+</section>
+
+<!-- Co-op: host or join -->
+<section id="coop" class="screen" hidden>
+  <div class="screen-inner narrow coop">
+    <p class="eyebrow">Co-op · 2–4 players</p>
+    <h2 class="h2">Squad up</h2>
+    <p class="lede small">One player hosts and runs the battle. Friends join with the room code. Everyone fights the same AI with their own loadout, battle points and call-ins.</p>
+    <label class="field"><span class="lbl">Your name</span><input id="coop-name" maxlength="16" autocomplete="nickname" placeholder="Soldier" /></label>
+    <button id="host-btn" class="cta" type="button">Host a room</button>
+    <div class="or"><span>or join a friend</span></div>
+    <div class="join-row"><input id="join-code" maxlength="4" placeholder="CODE" autocapitalize="characters" autocomplete="off" spellcheck="false" aria-label="Room code" /><button id="join-btn" class="cta alt" type="button">Join</button></div>
+    <p id="coop-status" class="status" role="status" aria-live="polite"></p>
+    <div class="btn-row"><button id="coop-back" class="ghost" type="button">Back</button></div>
+  </div>
+</section>
+
+<!-- Co-op lobby -->
+<section id="lobby" class="screen" hidden>
+  <div class="screen-inner">
+    <div class="lobby-head">
+      <div><p class="eyebrow">Room code</p><div id="room-code" class="room-code">----</div><p class="lede small">Share this code with up to 3 friends.</p></div>
+      <div class="lobby-players"><p class="eyebrow">Squad <span id="lobby-count">1/4</span></p><ul id="lobby-list"></ul></div>
+    </div>
+    <div id="lobby-diff" class="diff" role="group" aria-label="Difficulty">
+      <span class="lbl">Difficulty</span>
+      <button data-ldiff="recruit" type="button">Recruit</button><button data-ldiff="regular" type="button">Regular</button><button data-ldiff="veteran" type="button">Veteran</button>
+    </div>
+    <div id="lobby-cards" class="cards"></div>
+    <p id="lobby-status" class="status" role="status" aria-live="polite"></p>
+    <div class="btn-row"><button id="lobby-leave" class="ghost" type="button">Leave</button><button id="lobby-start" class="cta" type="button">Start battle</button></div>
+  </div>
+</section>
+
+<!-- Death -->
+<section id="death" class="screen dim" hidden>
+  <div class="screen-inner">
+    <p class="eyebrow red">Killed in action</p>
+    <h2 class="h2" id="death-timer">Reinforcements in 5</h2>
+    <div id="death-cards" class="cards"></div>
+    <div class="btn-row"><button id="death-btn" class="cta" type="button" disabled>Redeploy</button></div>
+  </div>
+</section>
+
+<!-- Pause -->
+<section id="pause" class="screen dim" hidden>
+  <div class="screen-inner narrow">
+    <h2 class="h2">Paused</h2>
+    <div class="stack">
+      <button id="resume-btn" class="cta" type="button">Resume</button>
+      <button id="music-btn" class="ghost" type="button">Music: On</button>
+      <button id="sound-btn" class="ghost" type="button">Sound: On</button>
+      <button id="restart-btn" class="ghost" type="button">Restart with new loadout</button>
+      <button id="menu-btn" class="ghost" type="button">Main menu</button>
+    </div>
+  </div>
+</section>
+
+<!-- End -->
+<section id="end" class="screen split" hidden>
+  <div class="split-text">
+    <p class="eyebrow">After-action report</p>
+    <h1 class="logo" id="end-title">Line Broken</h1>
+    <p class="lede" id="end-sub"></p>
+    <dl class="stats-grid">
+      <div><dt>Kills</dt><dd id="st-kills">0</dd></div><div><dt>Deaths</dt><dd id="st-deaths">0</dd></div>
+      <div><dt>Objectives</dt><dd id="st-caps">0/5</dd></div><div><dt>Battle points</dt><dd id="st-bp">0</dd></div><div><dt>Time</dt><dd id="st-time">0:00</dd></div>
+    </dl>
+    <button id="again-btn" class="cta" type="button">Fight again</button>
+  </div>
+  <div class="split-art"><img id="end-art" src="./assets/victory.jpg" alt="" /></div>
+</section>
+
+<script>window.__WS_BASE__ = 'port/8000';</script>
+<script type="module" src="./js/game.js"></script>
+<script data-pplx-inline-edit>
+(function () {
+  if (window === window.top) return;
+
+  const allowedParentOrigins = ["https://www.perplexity.ai","https://perplexity.ai","https://testing.perplexity.ai","https://staging.perplexity.ai","https://*.preview.i.perplexity.ai","http://perplexity.localhost","http://localhost:1420","http://127.0.0.1:1420","http://localhost:3000","http://127.0.0.1:3000","http://localhost:5173","http://127.0.0.1:5173"];
+  const MAX_FONT_BYTES = 500 * 1024;
+  const MAX_TOTAL_FONT_BYTES = 2 * 1024 * 1024;
+  const DEFAULT_LINE_HEIGHT = 16;
+  let scrollForwarding = false;
+  let scrollRaf = 0;
+  let trustedTopOrigin = null;
+
+  // Allow entries like "https://*.preview.i.perplexity.ai" — the wildcard
+  // matches a single DNS label (no dots), so "https://*.foo" cannot stretch
+  // across multiple labels.
+  function matchesAllowedOrigin(origin) {
+    if (!origin) return false;
+    for (const entry of allowedParentOrigins) {
+      if (!entry.includes("*")) {
+        if (entry === origin) return true;
+        continue;
+      }
+      const pattern = new RegExp(
+        "^" +
+          entry.replace(/[.+?^${}()|[\]\\]/g, "\\$&").replace(/\*/g, "[^.]+") +
+          "$",
+      );
+      if (pattern.test(origin)) return true;
+    }
+    return false;
+  }
+
+  // Trust decision: when the sender is same-origin-visible (event.origin is a
+  // real origin like https://www.perplexity.ai) we trust event.origin directly.
+  // When event.origin is "null" (opaque broker srcdoc), we fall back to the
+  // broker's stamped `parentOrigin` to identify the top window. The fallback
+  // is claim-only — we rely on the browser's native `targetOrigin` enforcement
+  // on the response path (see postToTrustedTop) to ensure replies can't be
+  // delivered to anyone but the actual top window of that claimed origin.
+  function getTrustedParentOrigin(event) {
+    const forwardedParentOrigin =
+      typeof event.data.parentOrigin === "string" ? event.data.parentOrigin : null;
+    const parentOrigin = event.origin === "null" ? forwardedParentOrigin : event.origin;
+    return matchesAllowedOrigin(parentOrigin) ? parentOrigin : null;
+  }
+
+  // All responses go to window.top with targetOrigin = the allowlisted origin.
+  // An attacker that iframes us inside their own null-origin broker can claim
+  // any parentOrigin they like, but the browser will drop the reply whenever
+  // the real top's origin doesn't match — so the screenshot never leaves.
+  function postToTrustedTop(message) {
+    if (!trustedTopOrigin) return;
+    try {
+      window.top.postMessage(message, trustedTopOrigin);
+    } catch (_error) {}
+  }
+
+  const PICK_CAPABILITIES = ["pick"];
+  const PICK_CHAIN_LENGTH = 4;
+  const PICK_MAX_TEXT_CHARS = 120;
+  const PICK_MAX_HTML_CHARS = 300;
+
+  function truncate(value, maxChars) {
+    return value.length > maxChars ? value.slice(0, maxChars - 1) + "…" : value;
+  }
+
+  function isPickableElement(element) {
+    return (
+      element instanceof Element &&
+      element !== document.documentElement &&
+      element !== document.body
+    );
+  }
+
+  function resolvePickTarget(x, y) {
+    if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
+    const element = document.elementFromPoint(x, y);
+    return isPickableElement(element) ? element.closest("svg") || element : null;
+  }
+
+  function pickLabel(element) {
+    if (element.id) return element.localName + "#" + element.id;
+    return [element.localName].concat(Array.from(element.classList).slice(0, 2)).join(".");
+  }
+
+  // Only attributes that help find the element in source. data-* values and URL
+  // query strings or fragments can carry tokens.
+  const PICK_ATTRIBUTES = new Set([
+    "id",
+    "class",
+    "name",
+    "type",
+    "role",
+    "alt",
+    "aria-label",
+    "href",
+    "src",
+  ]);
+
+  function pickAttributeValue(attribute) {
+    return attribute.name === "href" || attribute.name === "src"
+      ? attribute.value.split(/[?#]/)[0]
+      : attribute.value;
+  }
+
+  function describePickElement(element) {
+    const chain = [];
+    for (
+      let current = element;
+      isPickableElement(current) && chain.length < PICK_CHAIN_LENGTH;
+      current = current.parentElement
+    ) {
+      chain.unshift(current);
+    }
+    const attributes = Array.from(element.attributes)
+      .filter((attribute) => PICK_ATTRIBUTES.has(attribute.name))
+      .map((attribute) => ` ${attribute.name}="${pickAttributeValue(attribute).replace(/"/g, "&quot;")}"`)
+      .join("");
+    const text = (element.innerText || element.textContent || "").replace(/\s+/g, " ").trim();
+    return {
+      chain: chain.map(pickLabel),
+      html: truncate(`<${element.localName}${attributes}>`, PICK_MAX_HTML_CHARS),
+      text: text ? truncate(text, PICK_MAX_TEXT_CHARS) : undefined,
+    };
+  }
+
+  // Hover asks once per frame, and innerText on a large section forces layout,
+  // so only the rect is re-read while the pointer stays on the same element.
+  // Clicks ask for fresh details since the page may have changed the element.
+  let lastPick = null;
+
+  function describePickTarget(element, fresh) {
+    if (fresh || lastPick?.element !== element) {
+      lastPick = { element, details: describePickElement(element) };
+    }
+    const rect = element.getBoundingClientRect();
+    return {
+      rect: { x: rect.left, y: rect.top, width: rect.width, height: rect.height },
+      ...lastPick.details,
+    };
+  }
+
+  function inlineAll(original, clone) {
+    if (original.nodeType !== 1 || clone.nodeType !== 1) return;
+
+    try {
+      const computedStyle = getComputedStyle(original);
+      // cssText on a computed style is the serialized declaration in modern
+      // Chromium/Safari — a single read beats enumerating ~400 longhand
+      // properties. Firefox returns "" here, so we fall back on empty.
+      const serialized = computedStyle.cssText;
+      if (serialized) {
+        clone.style.cssText = serialized;
+      } else {
+        const parts = new Array(computedStyle.length);
+        for (let index = 0; index < computedStyle.length; index += 1) {
+          const property = computedStyle[index];
+          parts[index] = `${property}:${computedStyle.getPropertyValue(property)};`;
+        }
+        clone.style.cssText = parts.join("");
+      }
+    } catch (_error) {}
+
+    const originalChildren = original.children;
+    const clonedChildren = clone.children;
+    for (
+      let index = 0;
+      index < originalChildren.length && index < clonedChildren.length;
+      index += 1
+    ) {
+      inlineAll(originalChildren[index], clonedChildren[index]);
+    }
+  }
+
+  function extractFontUrl(srcValue) {
+    const matches = [
+      ...srcValue.matchAll(
+        /url\(["']?([^"')]+)["']?\)(?:\s*format\(["']?([^"')]+)["']?\))?/gi,
+      ),
+    ];
+    if (matches.length === 0) return null;
+    const woff2 = matches.find((m) => m[2] && m[2].toLowerCase().includes("woff2"));
+    if (woff2) return woff2[1];
+    const woff = matches.find((m) => m[2] && m[2].toLowerCase().includes("woff"));
+    if (woff) return woff[1];
+    return matches[0][1];
+  }
+
+  // Cache resolved font URL -> data URI across captures. Fonts on a page
+  // essentially never change, and a batch run emits multiple captures back to
+  // back — without this we'd refetch + re-base64 every time.
+  const fontDataUriCache = new Map();
+  const SRC_DECLARATION_RE = /src\s*:\s*[^;}]+/i;
+
+  async function fetchAsDataUri(url) {
+    if (fontDataUriCache.has(url)) return fontDataUriCache.get(url);
+    let dataUri = null;
+    try {
+      const response = await fetch(url, { mode: "cors", credentials: "omit" });
+      if (response.ok) {
+        const blob = await response.blob();
+        if (blob.size <= MAX_FONT_BYTES) {
+          dataUri = await new Promise((resolve) => {
+            const reader = new FileReader();
+            reader.onloadend = () =>
+              resolve(typeof reader.result === "string" ? reader.result : null);
+            reader.onerror = () => resolve(null);
+            reader.readAsDataURL(blob);
+          });
+        }
+      }
+    } catch (_error) {
+      dataUri = null;
+    }
+    fontDataUriCache.set(url, dataUri);
+    return dataUri;
+  }
+
+  function collectFontFaceRuleTexts() {
+    const rules = [];
+    for (const sheet of document.styleSheets) {
+      let cssRules;
+      try {
+        cssRules = sheet.cssRules;
+      } catch (_error) {
+        continue;
+      }
+      if (!cssRules) continue;
+      for (const rule of cssRules) {
+        const cssText = rule.cssText || "";
+        if (cssText.startsWith("@font-face")) rules.push(cssText);
+      }
+    }
+    return rules;
+  }
+
+  async function buildInlinedFontCss() {
+    const ruleTexts = collectFontFaceRuleTexts();
+    if (ruleTexts.length === 0) return null;
+
+    const resolved = ruleTexts.map((cssText) => {
+      if (!SRC_DECLARATION_RE.test(cssText)) return null;
+      const srcMatch = cssText.match(/src\s*:\s*([^;}]+)[;}]/i);
+      if (!srcMatch) return null;
+      const url = extractFontUrl(srcMatch[1]);
+      if (!url) return null;
+      try {
+        return { cssText, url: new URL(url, document.baseURI).href };
+      } catch (_error) {
+        return null;
+      }
+    });
+
+    const dataUris = await Promise.all(
+      resolved.map((entry) => (entry ? fetchAsDataUri(entry.url) : Promise.resolve(null))),
+    );
+
+    const inlined = [];
+    let totalBytes = 0;
+    for (let index = 0; index < resolved.length; index += 1) {
+      const entry = resolved[index];
+      const dataUri = dataUris[index];
+      if (!entry || !dataUri) continue;
+      const approxBytes = dataUri.length * 0.75;
+      if (totalBytes + approxBytes > MAX_TOTAL_FONT_BYTES) break;
+      totalBytes += approxBytes;
+      inlined.push(entry.cssText.replace(SRC_DECLARATION_RE, `src: url("${dataUri}")`));
+    }
+    return inlined.length > 0 ? inlined.join("\n") : null;
+  }
+
+  function stripExternal(clone) {
+    const images = clone.querySelectorAll("img");
+    for (let index = 0; index < images.length; index += 1) {
+      const src = images[index].getAttribute("src");
+      if (src && !src.startsWith("data:")) images[index].removeAttribute("src");
+    }
+
+    const elements = clone.querySelectorAll("*");
+    for (let index = 0; index < elements.length; index += 1) {
+      const style = elements[index].style.cssText;
+      if (style && style.includes("url(")) {
+        elements[index].style.cssText = style.replace(
+          /url\(["']?(?!data:)[^)"']*["']?\)/gi,
+          "none",
+        );
+      }
+    }
+  }
+
+  function emitScroll() {
+    scrollRaf = 0;
+    if (!scrollForwarding) return;
+    postToTrustedTop({
+      type: "INLINE_EDIT_SCROLL",
+      scrollX: window.scrollX,
+      scrollY: window.scrollY,
+      capabilities: PICK_CAPABILITIES,
+    });
+  }
+
+  window.addEventListener(
+    "scroll",
+    function () {
+      if (!scrollForwarding || scrollRaf) return;
+      scrollRaf = requestAnimationFrame(emitScroll);
+    },
+    { passive: true, capture: true },
+  );
+
+  async function handleCaptureRequest(event) {
+    const requestId = event.data.requestId;
+    const scrollX = window.scrollX;
+    const scrollY = window.scrollY;
+    const width = window.innerWidth;
+    const height = window.innerHeight;
+
+    function postResult(dataUrl) {
+      postToTrustedTop({
+        type: "INLINE_EDIT_SCREENSHOT_RESULT",
+        requestId,
+        dataUrl,
+        scrollX,
+        scrollY,
+      });
+    }
+
+    try {
+      // Wait for any pending web fonts to resolve so both inline metrics and
+      // the @font-face inlining below see the same loaded faces.
+      if (document.fonts && document.fonts.ready) {
+        try {
+          await document.fonts.ready;
+        } catch (_error) {}
+      }
+
+      const clone = document.documentElement.cloneNode(true);
+      inlineAll(document.documentElement, clone);
+
+      const removedNodes = clone.querySelectorAll("script,link[rel=\"stylesheet\"],style");
+      for (let index = 0; index < removedNodes.length; index += 1) {
+        removedNodes[index].remove();
+      }
+
+      stripExternal(clone);
+
+      // Re-embed web fonts as data-URI @font-face rules so the SVG rasterizer
+      // can resolve them — external font URLs aren't fetched during
+      // foreignObject rendering, which would otherwise force a fallback face
+      // and change text metrics.
+      const inlinedFontCss = await buildInlinedFontCss();
+      if (inlinedFontCss) {
+        const styleEl = document.createElement("style");
+        styleEl.textContent = inlinedFontCss;
+        const head = clone.querySelector("head");
+        if (head) head.appendChild(styleEl);
+        else clone.insertBefore(styleEl, clone.firstChild);
+      }
+
+      const html = new XMLSerializer().serializeToString(clone);
+      const svg =
+        `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}">` +
+        '<foreignObject width="100%" height="100%">' +
+        `<div xmlns="http://www.w3.org/1999/xhtml" style="width:${width}px;height:${height}px;overflow:hidden">` +
+        `<div style="position:relative;left:-${scrollX}px;top:-${scrollY}px">` +
+        html +
+        "</div></div></foreignObject></svg>";
+      const svgUrl = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+      const image = new Image();
+      image.onload = function () {
+        const canvas = document.createElement("canvas");
+        canvas.width = width;
+        canvas.height = height;
+        canvas.getContext("2d").drawImage(image, 0, 0);
+        postResult(canvas.toDataURL("image/png"));
+      };
+      image.onerror = function () {
+        postResult(null);
+      };
+      image.src = svgUrl;
+    } catch (_error) {
+      postResult(null);
+    }
+  }
+
+  window.addEventListener("message", function (event) {
+    if (!event.data) return;
+    // Only accept messages from the direct parent frame. Blocks sibling /
+    // unrelated-window postMessage senders that could otherwise reach us.
+    if (event.source !== window.parent) return;
+
+    const trustedParentOrigin = getTrustedParentOrigin(event);
+    if (!trustedParentOrigin) return;
+    trustedTopOrigin = trustedParentOrigin;
+
+    if (event.data.type === "INLINE_EDIT_PICK") {
+      const element = resolvePickTarget(event.data.x, event.data.y);
+      postToTrustedTop({
+        type: "INLINE_EDIT_PICK_RESULT",
+        seq: event.data.seq,
+        target: element ? describePickTarget(element, event.data.fresh === true) : null,
+      });
+      return;
+    }
+
+    if (event.data.type === "INLINE_EDIT_SCROLL_START") {
+      scrollForwarding = true;
+      emitScroll();
+      return;
+    }
+
+    if (event.data.type === "INLINE_EDIT_SCROLL_STOP") {
+      scrollForwarding = false;
+      if (scrollRaf) cancelAnimationFrame(scrollRaf);
+      scrollRaf = 0;
+      return;
+    }
+
+    if (event.data.type === "INLINE_EDIT_SCROLL_BY") {
+      const { deltaX, deltaY, deltaMode } = event.data;
+      if (!scrollForwarding || !Number.isFinite(deltaX) || !Number.isFinite(deltaY)) return;
+      if (deltaMode !== 0 && deltaMode !== 1 && deltaMode !== 2) return;
+      const lineHeight =
+        parseFloat(getComputedStyle(document.documentElement).lineHeight) || DEFAULT_LINE_HEIGHT;
+      const scaleX = deltaMode === 1 ? lineHeight : deltaMode === 2 ? window.innerWidth : 1;
+      const scaleY = deltaMode === 1 ? lineHeight : deltaMode === 2 ? window.innerHeight : 1;
+      // The selection overlay receives the wheel event instead of this iframe.
+      // Instant scrolling preserves trackpad deltas even on smooth-scroll sites.
+      window.scrollBy({ left: deltaX * scaleX, top: deltaY * scaleY, behavior: "instant" });
+      emitScroll();
+      return;
+    }
+
+    if (event.data.type !== "INLINE_EDIT_CAPTURE_REQUEST") return;
+
+    handleCaptureRequest(event);
+  });
+})();
+
+
+</script></body>
+</html>
